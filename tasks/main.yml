@@ -1,63 +1,91 @@
----
-- name: Gather variables for each operating system
-  include_vars: "{{ item }}"
-  with_first_found:
-    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_version | lower }}.yml"
-    - "{{ ansible_distribution | lower }}-{{ ansible_distribution_major_version | lower }}.yml"
-    - "{{ ansible_os_family | lower }}-{{ ansible_distribution_major_version | lower }}.yml"
-    - "{{ ansible_distribution | lower }}.yml"
-    - "{{ ansible_os_family | lower }}.yml"
-  tags:
-    - always
+- name: make sure user for Grafana exists
+  user:
+    name: "{{ grafana_user }}"
 
-- include: preflight.yml
-  tags:
-    - always
+- name: unarchive grafana
+  unarchive:
+    remote_src: yes
+    dest: "{{ grafana_install_dir | dirname }}"
+    src: "{{ grafana_install_url }}"
+    creates: "{{ grafana_install_dir }}/bin/grafana-server"
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
 
-- include: install.yml
-  tags:
-    - install
+- name: create grafana directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+    mode: 0755
+  with_items:
+    - "{{ grafana_config_dir }}"
+    - "{{ grafana_config_dir }}/provisioning"
+    - "{{ grafana_config_dir }}/provisioning/datasources"
+    - "{{ grafana_config_dir }}/provisioning/dashboards"
+    - "{{ grafana_data_dir }}"
+    - "{{ grafana_data_dir }}/dashboards"
+    - "{{ grafana_data_dir }}/plugins"
+    - "{{ grafana_logs_dir }}"
 
-- include: configure.yml
-  tags:
-    - configure
+- name: Create grafana main configuration file
+  template:
+    src: grafana.ini.j2
+    dest: "{{ grafana_config_dir }}/grafana.ini"
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+    mode: 0644
+  no_log: true
+  notify: restart grafana
 
-- include: plugins.yml
-  when: grafana_plugins != []
-  tags:
-    - configure
+- name: create systemd service unit
+  template:
+    src: grafana.service.j2
+    dest: /etc/systemd/system/grafana.service
 
-- name: Restart grafana before configuring datasources and dashboards
-  meta: flush_handlers
-  tags:
-    - always
+- name: make sure grafana is started
+  service:
+    name: grafana
+    state: started
+    enabled: yes
 
-- name: Wait for grafana to start
-  wait_for:
-    host: "{{ grafana_address }}"
-    port: "{{ grafana_port }}"
-  tags:
-    - always
+- name: Check which plugins are installed
+  find:
+    file_type: directory
+    recurse: false
+    paths: "{{ grafana_data_dir }}/plugins"
+  register: installed_plugins
 
-- include: api_keys.yml
-  when: grafana_api_keys | length > 0
-  tags:
-    - configure
+- name: Install plugins
+  command: "grafana-cli --pluginsDir {{ grafana_data_dir }}/plugins plugins install {{ item }}"
+  args:
+    creates: "{{ grafana_data_dir }}/plugins/{{ item }}"
+  with_items: "{{ grafana_plugins | difference(installed_plugins.files) }}"
+  notify:
+    - restart grafana
 
-- include: datasources.yml
+- name: Create datasources file
+  copy:
+    dest: "{{ grafana_config_dir }}/provisioning/datasources/ansible.yml"
+    content: |
+      delete_datasources: []
+      datasources:
+      {{ grafana_datasources | to_nice_yaml }}
+    backup: false
+  notify: restart grafana
   when: grafana_datasources != []
-  tags:
-    - configure
-    - datasources
 
-- include: notifications.yml
-  when: grafana_alert_notifications | length > 0
-  tags:
-    - configure
-    - notifications
+- name: Copy dashboards files
+  copy:
+    src: "{{ item }}"
+    dest: "{{ grafana_config_dir }}/provisioning/dashboards"
+    mode: 0644
+    owner: "{{ grafana_user }}"
+    group: "{{ grafana_group }}"
+  with_fileglob:
+    - "{{ grafana_dashboards_src }}"
 
-- include: dashboards.yml
-  when: grafana_dashboards | length > 0
-  tags:
-    - configure
-    - dashboards
+- name: create dashboards configuration
+  template:
+    src: grafana.dashboards.yml.j2
+    dest: "{{ grafana_config_dir }}/provisioning/dashboards/contentwise.yml"

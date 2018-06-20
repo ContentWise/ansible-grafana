@@ -1,6 +1,10 @@
 ---
+
+- name: service reenable
+  command: systemctl reenable grafana.service
+
 - name: restart grafana
   become: true
   service:
-    name: grafana-server
+    name: grafana
     state: restarted

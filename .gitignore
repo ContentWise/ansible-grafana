@@ -1,7 +1,3 @@
-*.swp
-*.swo
-*.idea
-.molecule
-.cache
-*.kate-swp
-__pycache__/
+.idea
+.kitchen
+.DS_Store

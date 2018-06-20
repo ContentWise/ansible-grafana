@@ -1,10 +1,24 @@
 ---
-grafana_version: latest
+
+grafana_version: 5.1.3
+grafana_reaease_name: "grafana-{{ grafana_version }}"
+grafana_install_url: https://s3-us-west-2.amazonaws.com/grafana-releases/release/{{ grafana_reaease_name }}.linux-x64.tar.gz
 
 grafana_instance: "{{ ansible_fqdn | default(ansible_host) | default(inventory_hostname) }}"
 
-grafana_logs_dir: "/var/log/grafana"
-grafana_data_dir: "/var/lib/grafana"
+grafana_user: grafana
+grafana_group: grafana
+
+grafana_install_dir: "/opt/{{ grafana_reaease_name }}"
+grafana_config_dir: /opt/grafana/config
+
+grafana_logs_dir: /opt/grafana/logs
+grafana_data_dir: /opt/grafana/data
+
+grafana_dashboards_src: "grafana/dashboards/*"
+
+# This role is a simplified version of this one: https://github.com/cloudalchemy/ansible-grafana
+# please follow the instruction in that link to properly set the following variables
 
 grafana_address: "0.0.0.0"
 grafana_port: 3000
@@ -40,16 +54,16 @@ grafana_security:
 # Database setup
 grafana_database:
   type: sqlite3
-#  host: 127.0.0.1:3306
-#  name: grafana
-#  user: root
-#  password: ""
-#  url: ""
-#  ssl_mode: disable
-#  path: grafana.db
-#  max_idle_conn: 2
-#  max_open_conn: ""
-#  log_queries: ""
+  # host: 127.0.0.1:3306
+  # name: grafana
+  # user: root
+  # password: ""
+  # url: ""
+  # ssl_mode: disable
+  # path: grafana.db
+  # max_idle_conn: 2
+  # max_open_conn: ""
+  # log_queries: ""
 
 # User management and registration
 grafana_welcome_email_on_sign_up: false
@@ -73,47 +87,8 @@ grafana_auth: {}
 #    org_role: Viewer
 #  ldap:
 #    config_file: "/etc/grafana/ldap.toml"
-#    allow_sign_up: false
+#    allow_sign_up: False
 #  basic: true
-
-grafana_ldap: {}
-#  verbose_logging: false
-#  servers:
-#    host: 127.0.0.1
-#    port: 389 # 636 for SSL
-#    use_ssl: false
-#    start_tls: false
-#    ssl_skip_verify: false
-#    root_ca_cert: /path/to/certificate.crt
-#    bind_dn: "cn=admin,dc=grafana,dc=org"
-#    bind_password: grafana
-#    search_filter: "(cn=%s)" # "(sAMAccountName=%s)" on AD
-#    search_base_dns:
-#      - "dc=grafana,dc=org"
-#    group_search_filter: "(&(objectClass=posixGroup)(memberUid=%s))"
-#    group_search_base_dns:
-#      - "ou=groups,dc=grafana,dc=org"
-#    attributes:
-#      name: givenName
-#      surname: sn
-#      username: sAMAccountName
-#      member_of: memberOf
-#      email: mail
-#  group_mappings:
-#    - name: Main Org.
-#      id: 1
-#      groups:
-#        - group_dn: "cn=admins,ou=groups,dc=grafana,dc=org"
-#          org_role: Admin
-#        - group_dn: "cn=editors,ou=groups,dc=grafana,dc=org"
-#          org_role: Editor
-#        - group_dn: "*"
-#          org_role: Viewer
-#    - name: Alternative Org
-#      id: 2
-#      groups:
-#        - group_dn: "cn=alternative_admins,ou=groups,dc=grafana,dc=org"
-#          org_role: Admin
 
 grafana_session: {}
 #  provider: file
@@ -161,52 +136,27 @@ grafana_image_storage: {}
 #  bucket:
 #  path:
 
-
 #######
 # Plugins from https://grafana.com/plugins
 grafana_plugins: []
 #  - raintank-worldping-app
-#
-# Dashboards from https://grafana.com/dashboards
-grafana_dashboards: []
-#  - dashboard_id: '4271'
-#    revision_id: '3'
-#    datasource: 'Prometheus'
-#  - dashboard_id: '1860'
-#    revision_id: '4'
-#    datasource: 'Prometheus'
-#  - dashboard_id: '358'
-#    revision_id: '1'
-#    datasource: 'Prometheus'
-
-# Alert notification channels to configure
-grafana_alert_notifications: []
-#   - name: "Email Alert"
-#     type: "email"
-#     isDefault: true
-#     settings:
-#       addresses: "example@example.com"
 
 # Datasources to configure
-grafana_datasources: []
-#  - name: "Prometheus"
-#    type: "prometheus"
-#    access: "proxy"
-#    url: "http://prometheus.mydomain"
-#    basicAuth: true
-#    basicAuthUser: "admin"
-#    basicAuthPassword: "password"
-#    isDefault: true
-#    jsonData: '{"tlsAuth":false,"tlsAuthWithCACert":false,"tlsSkipVerify":true}'
+grafana_datasources:
+  - name: 'CWPrometheus'
+    access: 'proxy'
+    editable: true
+    is_default: true
+    org_id: 1
+    type: 'prometheus'
+    url: 'http://localhost:9090'
 
-# API keys to configure
-grafana_api_keys: []
-#  - name: "admin"
-#    role: "Admin"
-#  - name: "viewer"
-#    role: "Viewer"
-#  - name: "editor"
-#    role: "Editor"
-
-# The location where the keys should be stored.
-grafana_api_keys_dir: "{{ lookup('env', 'HOME') }}/grafana/keys"
+grafana_dashboards:
+  apiVersion: 1
+  providers:
+  - name: 'default'
+    orgId: 1
+    folder: ''
+    type: file
+    options:
+      path: "{{ grafana_config_dir }}/provisioning/dashboards"
